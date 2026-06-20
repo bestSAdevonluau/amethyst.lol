@@ -1,1 +1,194 @@
+-- =============================================================================
+-- INICIALIZACIÓN DE WINDUI (amethyst.lol)
+-- =============================================================================
+local cloneref = (cloneref or clonereference or function(instance) return instance end)
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
 
+local WindUI
+if RunService:IsStudio() or not writefile then
+    WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+else
+    WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+end
+
+-- Variables globales y de configuración para el Hitbox Expander
+getgenv().HBE = false
+local HitboxX = 15
+local HitboxY = 15
+local HitboxZ = 15
+local HITBOX_COLOUR = Color3.fromRGB(255, 0, 0)
+
+-- Crear Ventana Principal
+local Window = WindUI:CreateWindow({
+	Title = "amethyst.lol",
+	Icon = "terminal",
+	Theme = "Dark",
+	ToggleKey = Enum.KeyCode.F, -- Tecla por defecto para PC (F)
+})
+
+Window:Tag({ Title = "v1.0.0", Color = Color3.fromHex("#a2ff30") })
+
+-- Crear Pestañas Solicitadas
+local TabCombat = Window:Tab({ Title = "Combat", Icon = "swords" })
+local TabPlayer = Window:Tab({ Title = "Player", Icon = "user" })
+local TabVisuals = Window:Tab({ Title = "Visuals", Icon = "eye" })
+
+-- Secciones
+local SecHBE = TabCombat:Section({ Title = "Hitbox Expander" })
+local SecUI = TabVisuals:Section({ Title = "Interfaz & Accesibilidad" })
+
+-- =============================================================================
+-- LÓGICA DE TU SCRIPT DE HITBOX (CONECTADO A LA UI)
+-- =============================================================================
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local function GetCharParent()
+	local charParent
+	repeat task.wait() until LocalPlayer.Character
+	for _, char in pairs(workspace:GetDescendants()) do
+		if string.find(char.Name, LocalPlayer.Name) and char:FindFirstChild("Humanoid") then
+			charParent = char.Parent
+			break
+		end
+	end
+	return charParent
+end
+
+-- Metatable Hook (Arreglado el cierre del pcall)
+pcall(function()
+	local mt = getrawmetatable(game)
+	setreadonly(mt, false)
+	local old = mt.__index
+	mt.__index = function(Self, Key)
+		if tostring(Self) == "HumanoidRootPart" and tostring(Key) == "Size" then
+			return Vector3.new(2,2,1)
+		end
+		return old(Self, Key)
+	end
+	setreadonly(mt, true)
+end)
+
+local CHAR_PARENT = GetCharParent()
+
+local function AssignHitboxes(player)
+	if player == LocalPlayer then return end
+
+	local hitbox_connection;
+	hitbox_connection = game:GetService("RunService").RenderStepped:Connect(function()
+		if getgenv().HBE then
+			local char = CHAR_PARENT:FindFirstChild(player.Name)
+			if char and char:FindFirstChild("HumanoidRootPart") then
+				local currentSize = Vector3.new(HitboxX, HitboxY, HitboxZ)
+				if char.HumanoidRootPart.Size ~= currentSize or char.HumanoidRootPart.Color ~= HITBOX_COLOUR then
+					char.HumanoidRootPart.Size = currentSize
+					char.HumanoidRootPart.Color = HITBOX_COLOUR
+					char.HumanoidRootPart.Transparency = 0.5
+					char.CanCollide = false
+				end
+			end
+		else
+			hitbox_connection:Disconnect()
+		end
+	end)
+end
+
+-- Ejecución inicial para jugadores existentes y nuevos
+local function StartHBE()
+	for _, player in ipairs(Players:GetPlayers()) do
+		AssignHitboxes(player)
+	end
+end
+
+Players.PlayerAdded:Connect(function(player)
+	if getgenv().HBE then
+		AssignHitboxes(player)
+	end
+end)
+
+-- =============================================================================
+-- CONTROLES DE LA INTERFAZ (ELEMENTOS MULTIPLATAFORMA)
+-- =============================================================================
+
+-- 1. Activar / Desactivar HBE
+SecHBE:Toggle({
+    Title = "Enable Hitbox Expander",
+    Desc = "Modifica el tamaño de la cabeza/cuerpo de los enemigos",
+    Value = false,
+    Callback = function(state)
+        getgenv().HBE = state
+        if state then
+            StartHBE()
+        end
+    end
+})
+
+-- 2. Selector de Color para la Hitbox
+SecHBE:Colorpicker({
+    Title = "Hitbox Color",
+    Desc = "Cambia el color visual de las hitboxes",
+    Default = Color3.fromRGB(255, 0, 0),
+    Callback = function(color)
+        HITBOX_COLOUR = color
+    end
+})
+
+-- 3. Sliders individuales para X, Y, Z (Máximo 20)
+SecHBE:Slider({
+    Title = "Hitbox Size X",
+    Step = 1,
+    Value = { Min = 2, Max = 20, Default = 15 },
+    Callback = function(value)
+        HitboxX = value
+    end
+})
+
+SecHBE:Slider({
+    Title = "Hitbox Size Y",
+    Step = 1,
+    Value = { Min = 2, Max = 20, Default = 15 },
+    Callback = function(value)
+        HitboxY = value
+    end
+})
+
+SecHBE:Slider({
+    Title = "Hitbox Size Z",
+    Step = 1,
+    Value = { Min = 2, Max = 20, Default = 15 },
+    Callback = function(value)
+        HitboxZ = value
+    end
+})
+
+-- 4. Controles de Apertura (PC Keybind & Botón Virtual para Celular)
+SecUI:Keybind({
+    Title = "Cambiar Tecla de Menú (PC)",
+    Desc = "Presiona una tecla para reasignar el menú",
+    Value = "F",
+    Callback = function(keyName)
+        Window:SetToggleKey(Enum.KeyCode[keyName])
+    end
+})
+
+-- Como en celular no hay teclado físico, añadimos un botón visible permanente en la pestaña Visuals para minimizar la interfaz cómodamente
+SecUI:Button({
+    Title = "Ocultar Interfaz (Mobile)",
+    Color = Color3.fromHex("#ff3a3a"),
+    Justify = "Center",
+    Callback = function()
+        -- Simula la acción del ToggleKey nativo de la librería para cerrar el menú en pantallas táctiles
+        pcall(function()
+            game:GetService("VirtualInputManager"):SendKeyEvent(true, Window.ToggleKey, false, game)
+        end)
+    end
+})
+
+-- Notificación de carga exitosa
+WindUI:Notify({
+    Title = "amethyst.lol",
+    Content = "Script cargado con éxito. Usa 'F' para abrir/cerrar.",
+    Duration = 4,
+    Icon = "terminal"
+})
