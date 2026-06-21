@@ -3,13 +3,13 @@ local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
 local Window = Library:CreateWindow{
-    Title = "HvH Internal",
-    SubTitle = "by Actual Master Oogway & Amethyst",
+    Title = "Amethyst.lol [beta free]",
+    SubTitle = "amethyst dev",
     TabWidth = 160,
     Size = UDim2.fromOffset(830, 525),
     Resize = true, 
     MinSize = Vector2.new(470, 380),
-    Acrylic = false, -- Desactivado para evitar lag en celulares
+    Acrylic = false, 
     Theme = "Dark",
     MinimizeKey = Enum.KeyCode.RightControl
 }
@@ -31,7 +31,7 @@ local player = Players.LocalPlayer
 
 local camlockTargetName = nil
 
--- Círculo FOV usando la API nativa Drawing de Roblox
+-- Círculo FOV Estricto
 local FovCircle = Drawing.new("Circle")
 FovCircle.Thickness = 1.5
 FovCircle.NumSides = 60
@@ -40,7 +40,7 @@ FovCircle.Filled = false
 FovCircle.Color = Color3.fromRGB(160, 32, 240)
 FovCircle.Visible = false
 
--- Configuración Base de HBE (Extraído de tu scripthvh.lua)
+-- Configuración Base de HBE
 local HITBOX_SIZE = Vector3.new(15, 15, 15)
 getgenv().HBE = false
 
@@ -56,7 +56,7 @@ local function GetCharParent()
     return charParent
 end
 
--- Metatabla para spoofear el tamaño real en el cliente (Tu lógica anti-detección interna)
+-- Spoof de tamaño en metatabla
 pcall(function()
     local mt = getrawmetatable(game)
     setreadonly(mt, false)
@@ -71,14 +71,15 @@ pcall(function()
 end)
 
 -- ============================================================================
--- SECCIÓN DE LA INTERFAZ: CAMLOCK
+-- INTERFAZ SECCIÓN: CAMLOCK PERSISTENTE
 -- ============================================================================
-Tabs.Combat:CreateParagraph("CamlockSection", { Title = "🎯 Camlock System", Content = "Configuraciones del apuntado asistido y FOV." })
+Tabs.Combat:CreateParagraph("CamlockSection", { Title = "🎯 Persistent Camlock System", Content = "Apuntado forzado persistente que no cambia de objetivo automáticamente." })
 
 local CamlockToggle = Tabs.Combat:CreateToggle("CamlockOn", { Title = "Enable Camlock", Default = false })
 local CamlockKeybind = Tabs.Combat:CreateKeybind("CamlockBind", { Title = "Camlock Keybind", Mode = "Toggle", Default = "C" })
 
 local FovToggle = Tabs.Combat:CreateToggle("FovVisible", { Title = "Show FOV Circle", Default = false })
+local MoveFovToggle = Tabs.Combat:CreateToggle("MoveFov", { Title = "Move FOV with Mouse", Default = false })
 local FovSlider = Tabs.Combat:CreateSlider("FovRadius", { Title = "FOV Radius", Default = 150, Min = 10, Max = 500, Rounding = 1 })
 local FovColorpicker = Tabs.Combat:CreateColorpicker("FovColor", { Title = "FOV Circle Color", Default = Color3.fromRGB(160, 32, 240) })
 
@@ -88,7 +89,7 @@ local LerpSlider = Tabs.Combat:CreateSlider("CamlockLerp", { Title = "Smooth Spe
 local PredToggle = Tabs.Combat:CreateToggle("CamlockPredOn", { Title = "Prediction Mode", Default = true })
 local PredSlider = Tabs.Combat:CreateSlider("CamlockPred", { Title = "Prediction Factor", Default = 0.134, Min = 0.001, Max = 0.5, Rounding = 3 })
 
--- Lógica para buscar el objetivo más cercano que se encuentre dentro del FOV
+-- Buscar el más cercano tomando como referencia el centro de la pantalla (o Mouse si se activa)
 local function getClosestPlayerInFOV()
     local closestPlayer = nil
     local shortestDistance = FovCircle.Radius
@@ -97,8 +98,15 @@ local function getClosestPlayerInFOV()
         if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
             local pos, onScreen = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
             if onScreen then
-                local mousePos = player:GetMouse()
-                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(mousePos.X, mousePos.Y)).Magnitude
+                local originPos
+                if Options.MoveFov.Value then
+                    local mousePos = player:GetMouse()
+                    originPos = Vector2.new(mousePos.X, mousePos.Y)
+                else
+                    originPos = camera.ViewportSize / 2
+                end
+                
+                local distance = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
                 if distance < shortestDistance then
                     closestPlayer = p
                     shortestDistance = distance
@@ -109,63 +117,65 @@ local function getClosestPlayerInFOV()
     return closestPlayer
 end
 
--- Listener del Keybind para activar/desactivar en PC o pantallas móviles
+-- Listener Keybind
 CamlockKeybind:OnClick(function()
     CamlockToggle:SetValue(not Options.CamlockOn.Value)
 end)
 
+-- Lógica de activación persistente
 CamlockToggle:OnChanged(function(val)
     if val then
         local target = getClosestPlayerInFOV()
-        camlockTargetName = target and target.Name or nil
-        if not camlockTargetName then
-            CamlockToggle:SetValue(false) -- Apaga si no hay nadie en el FOV
+        if target then
+            camlockTargetName = target.Name
+        else
+            camlockTargetName = nil
+            CamlockToggle:SetValue(false)
         end
     else
         camlockTargetName = nil
     end
 end)
 
--- Actualizaciones visuales y de estado del FOV en tiempo real
+-- Posicionamiento y renderizado del FOV (Centro u opcionalmente Mouse)
 RunService.RenderStepped:Connect(function()
-    local mousePos = player:GetMouse()
-    FovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+    if Options.MoveFov.Value then
+        local mousePos = player:GetMouse()
+        FovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+    else
+        FovCircle.Position = camera.ViewportSize / 2
+    end
+    
     FovCircle.Visible = Options.FovVisible.Value
     FovCircle.Radius = Options.FovRadius.Value
     FovCircle.Color = Options.FovColor.Value
 end)
 
--- Loop principal del apuntado (RenderStepped)
+-- Loop de apuntado del Camlock (Es persistente y no tiene auto-switch)
 RunService.RenderStepped:Connect(function()
     if Options.CamlockOn.Value and camlockTargetName then
         local targetPlayer = Players:FindFirstChild(camlockTargetName)
         if targetPlayer and targetPlayer.Character then
-            local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                local bone = targetPlayer.Character:FindFirstChild(Options.CamlockBone.Value)
-                if bone and bone:IsA("BasePart") then
-                    local targetPosition = bone.Position
-                    if Options.CamlockPredOn.Value then
-                        targetPosition = targetPosition + (bone.Velocity * Options.CamlockPred.Value)
-                    end
-                    local newCFrame = CFrame.new(camera.CFrame.Position, targetPosition)
-                    if Options.CamlockSmooth.Value then
-                        camera.CFrame = camera.CFrame:Lerp(newCFrame, Options.CamlockLerp.Value)
-                    else
-                        camera.CFrame = newCFrame
-                    end
+            local bone = targetPlayer.Character:FindFirstChild(Options.CamlockBone.Value)
+            if bone and bone:IsA("BasePart") then
+                local targetPosition = bone.Position
+                if Options.CamlockPredOn.Value then
+                    targetPosition = targetPosition + (bone.Velocity * Options.CamlockPred.Value)
                 end
-            else
-                CamlockToggle:SetValue(false)
+                
+                local newCFrame = CFrame.new(camera.CFrame.Position, targetPosition)
+                if Options.CamlockSmooth.Value then
+                    camera.CFrame = camera.CFrame:Lerp(newCFrame, Options.CamlockLerp.Value)
+                else
+                    camera.CFrame = newCFrame
+                end
             end
-        else
-            CamlockToggle:SetValue(false)
         end
     end
 end)
 
 -- ============================================================================
--- SECCIÓN DE LA INTERFAZ: HBE (Colocada debajo de Camlock)
+-- INTERFAZ SECCIÓN: HBE (Debajo del Camlock)
 -- ============================================================================
 Tabs.Combat:CreateParagraph("HbeSection", { Title = "🧱 Hitbox Expander (HBE)", Content = "Agranda el tamaño de las hitboxes enemigas desde el entorno del cliente." })
 
@@ -180,7 +190,6 @@ HbeSizeSlider:OnChanged(function(val)
     HITBOX_SIZE = Vector3.new(val, val, val)
 end)
 
--- Lógica asíncrona dedicada a manipular el tamaño de las Hitboxes en ejecución de fondo
 task.spawn(function()
     local CHAR_PARENT = GetCharParent()
     while true do
@@ -193,14 +202,13 @@ task.spawn(function()
                         local hrp = char.HumanoidRootPart
                         hrp.Size = HITBOX_SIZE
                         hrp.Transparency = 0.7
-                        hrp.Color = Color3.fromRGB(160, 32, 240) -- Color unificado Morado Amethyst
+                        hrp.Color = Color3.fromRGB(160, 32, 240) 
                         hrp.Material = Enum.Material.Neon
                         hrp.CanCollide = false
                     end
                 end
             end
         else
-            -- Si se apaga, revierte las hitboxes a su tamaño natural
             for _, playerEnemy in ipairs(Players:GetPlayers()) do
                 if playerEnemy ~= player then
                     local char = CHAR_PARENT and CHAR_PARENT:FindFirstChild(playerEnemy.Name)
@@ -218,7 +226,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
--- MANEJADORES DE GUARDADO Y CONFIGURACIONES (Settings)
+-- SETTINGS & CONFIGS
 -- ============================================================================
 SaveManager:SetLibrary(Library)
 InterfaceManager:SetLibrary(Library)
@@ -234,8 +242,8 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Library:Notify{
-    Title = "HvH Framework",
-    Content = "El script de Combate cargó exitosamente en el framework.",
+    Title = "Amethyst Framework",
+    Content = "Script listo con títulos y persistencia configurada.",
     Duration = 5
 }
 
