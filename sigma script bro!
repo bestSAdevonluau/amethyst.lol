@@ -3,35 +3,35 @@ local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
 local Window = Library:CreateWindow{
-    Title = "Amethyst.lol [beta free]",
-    SubTitle = "amethyst dev",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(830, 525),
-    Resize = true, 
-    MinSize = Vector2.new(470, 380),
-    Acrylic = false, 
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.RightControl
+	Title = "Amethyst.lol [beta free]",
+	SubTitle = "amethyst dev",
+	TabWidth = 160,
+	Size = UDim2.fromOffset(830, 525),
+	Resize = true, 
+	MinSize = Vector2.new(470, 380),
+	Acrylic = false, 
+	Theme = "Dark",
+	MinimizeKey = Enum.KeyCode.RightControl
 }
 
 local Tabs = {
-    Combat = Window:CreateTab{ Title = "Combat", Icon = "swords" },
-    Settings = Window:CreateTab{ Title = "Settings", Icon = "settings" }
+	Combat = Window:CreateTab{ Title = "Combat", Icon = "swords" },
+	Player = Window:CreateTab{ Title = "Player", Icon = "user" },
+	Settings = Window:CreateTab{ Title = "Settings", Icon = "settings" }
 }
 
 local Options = Library.Options
 
--- ============================================================================
--- VARIABLES DEL SISTEMA (Camlock / FOV / HBE)
--- ============================================================================
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local camera = workspace.CurrentCamera
 local player = Players.LocalPlayer
 
 local camlockTargetName = nil
+local SpeedOn = false
+local FlyOn = false
 
--- Círculo FOV Estricto
 local FovCircle = Drawing.new("Circle")
 FovCircle.Thickness = 1.5
 FovCircle.NumSides = 60
@@ -40,211 +40,250 @@ FovCircle.Filled = false
 FovCircle.Color = Color3.fromRGB(160, 32, 240)
 FovCircle.Visible = false
 
--- Configuración Base de HBE
 local HITBOX_SIZE = Vector3.new(15, 15, 15)
 getgenv().HBE = false
 
 local function GetCharParent()
-    local charParent
-    repeat task.wait() until player.Character
-    for _, char in pairs(workspace:GetDescendants()) do
-        if string.find(char.Name, player.Name) and char:FindFirstChild("Humanoid") then
-            charParent = char.Parent
-            break
-        end
-    end
-    return charParent
+	local charParent
+	repeat task.wait() until player.Character
+	for _, char in pairs(workspace:GetDescendants()) do
+		if string.find(char.Name, player.Name) and char:FindFirstChild("Humanoid") then
+			charParent = char.Parent
+			break
+		end
+	end
+	return charParent
 end
 
--- Spoof de tamaño en metatabla
 pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local old = mt.__index
-    mt.__index = function(Self, Key)
-        if tostring(Self) == "HumanoidRootPart" and tostring(Key) == "Size" then
-            return Vector3.new(2,2,1)
-        end
-        return old(Self, Key)
-    end 
-    setreadonly(mt, true)
+	local mt = getrawmetatable(game)
+	setreadonly(mt, false)
+	local old = mt.__index
+	mt.__index = function(Self, Key)
+		if tostring(Self) == "HumanoidRootPart" and tostring(Key) == "Size" then
+			return Vector3.new(2,2,1)
+		end
+		return old(Self, Key)
+	end 
+	setreadonly(mt, true)
 end)
 
--- ============================================================================
--- INTERFAZ SECCIÓN: CAMLOCK PERSISTENTE
--- ============================================================================
-Tabs.Combat:CreateParagraph("CamlockSection", { Title = "🎯 Persistent Camlock System", Content = "Apuntado forzado persistente que no cambia de objetivo automáticamente." })
+Tabs.Combat:CreateParagraph("AimSystemHeading", { Title = "Aimbot Vector Engine", Content = "Main targeting configurations for coordinate locks." })
 
-local CamlockToggle = Tabs.Combat:CreateToggle("CamlockOn", { Title = "Enable Camlock", Default = false })
-local CamlockKeybind = Tabs.Combat:CreateKeybind("CamlockBind", { Title = "Camlock Keybind", Mode = "Toggle", Default = "C" })
+local CamlockToggle = Tabs.Combat:CreateToggle("CamlockOn", { Title = "Toggle Aim Assist", Default = false })
+local CamlockKeybind = Tabs.Combat:CreateKeybind("CamlockBind", { Title = "Targeting Hotkey", Mode = "Toggle", Default = "C" })
 
-local FovToggle = Tabs.Combat:CreateToggle("FovVisible", { Title = "Show FOV Circle", Default = false })
-local MoveFovToggle = Tabs.Combat:CreateToggle("MoveFov", { Title = "Move FOV with Mouse", Default = false })
-local FovSlider = Tabs.Combat:CreateSlider("FovRadius", { Title = "FOV Radius", Default = 150, Min = 10, Max = 500, Rounding = 1 })
-local FovColorpicker = Tabs.Combat:CreateColorpicker("FovColor", { Title = "FOV Circle Color", Default = Color3.fromRGB(160, 32, 240) })
+local FovToggle = Tabs.Combat:CreateToggle("FovVisible", { Title = "Render Field of View", Default = false })
+local MoveFovToggle = Tabs.Combat:CreateToggle("MoveFov", { Title = "Dynamic Screen Anchor", Default = false })
+local FovSlider = Tabs.Combat:CreateSlider("FovRadius", { Title = "Field of View Radius", Default = 150, Min = 10, Max = 500, Rounding = 1 })
+local FovColorpicker = Tabs.Combat:CreateColorpicker("FovColor", { Title = "Field of View Color", Default = Color3.fromRGB(160, 32, 240) })
 
-local BoneDropdown = Tabs.Combat:CreateDropdown("CamlockBone", { Title = "Target Bone", Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, Multi = false, Default = 1 })
-local SmoothToggle = Tabs.Combat:CreateToggle("CamlockSmooth", { Title = "Smooth Camera Movement", Default = true })
-local LerpSlider = Tabs.Combat:CreateSlider("CamlockLerp", { Title = "Smooth Speed", Default = 0.13, Min = 0.01, Max = 1, Rounding = 2 })
-local PredToggle = Tabs.Combat:CreateToggle("CamlockPredOn", { Title = "Prediction Mode", Default = true })
-local PredSlider = Tabs.Combat:CreateSlider("CamlockPred", { Title = "Prediction Factor", Default = 0.134, Min = 0.001, Max = 0.5, Rounding = 3 })
+local BoneDropdown = Tabs.Combat:CreateDropdown("CamlockBone", { Title = "Target Component", Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, Multi = false, Default = 1 })
+local SmoothToggle = Tabs.Combat:CreateToggle("CamlockSmooth", { Title = "Interpolate Camera Matrix", Default = true })
+local LerpSlider = Tabs.Combat:CreateSlider("CamlockLerp", { Title = "Interpolation Weight", Default = 0.13, Min = 0.01, Max = 1, Rounding = 2 })
+local PredToggle = Tabs.Combat:CreateToggle("CamlockPredOn", { Title = "Velocity Prediction Algorithm", Default = true })
+local PredSlider = Tabs.Combat:CreateSlider("CamlockPred", { Title = "Prediction Vector Scaling", Default = 0.134, Min = 0.001, Max = 2.000, Rounding = 3 })
 
--- Buscar el más cercano tomando como referencia el centro de la pantalla (o Mouse si se activa)
-local function getClosestPlayerInFOV()
-    local closestPlayer = nil
-    local shortestDistance = FovCircle.Radius
-    
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local pos, onScreen = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-            if onScreen then
-                local originPos
-                if Options.MoveFov.Value then
-                    local mousePos = player:GetMouse()
-                    originPos = Vector2.new(mousePos.X, mousePos.Y)
-                else
-                    originPos = camera.ViewportSize / 2
-                end
-                
-                local distance = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
-                if distance < shortestDistance then
-                    closestPlayer = p
-                    shortestDistance = distance
-                end
-            end
-        end
-    end
-    return closestPlayer
+Tabs.Player:CreateParagraph("ModifierHeading", { Title = "Environment and Physics Manipulation", Content = "Client-sided movement and scale modifications." })
+
+local HbeToggle = Tabs.Player:CreateToggle("HbeOn", { Title = "Activate Hitbox Expander", Default = false })
+local HbeSizeSlider = Tabs.Player:CreateSlider("HbeSize", { Title = "Bounding Box Scale", Default = 15, Min = 2, Max = 100, Rounding = 1 })
+
+local SpeedToggle = Tabs.Player:CreateToggle("CFrameSpeedOn", { Title = "Enable Coordinate Velocity (CFrame)", Default = false })
+local SpeedSlider = Tabs.Player:CreateSlider("CFrameSpeedVal", { Title = "Velocity Magnitude (Studs/sec)", Default = 160, Min = 20, Max = 5000, Rounding = 1 })
+
+local FlyToggle = Tabs.Player:CreateToggle("CFlyOn", { Title = "Enable Three-Dimensional Flight (CFly)", Default = false })
+local FlySlider = Tabs.Player:CreateSlider("CFlySpeedVal", { Title = "Flight Velocity Magnitude", Default = 80, Min = 20, Max = 20000, Rounding = 1 })
+
+for _, component in pairs(Tabs.Player.Elements) do
+	if component.ClassName == "Slider" and component.Frame then
+		pcall(function()
+			component.Frame.Size = UDim2.new(component.Frame.Size.X.Scale, component.Frame.Size.X.Offset, component.Frame.Size.Y.Scale, component.Frame.Size.Y.Offset + 12)
+			if component.Frame:FindFirstChild("SliderBox") then
+				component.Frame.SliderBox.Size = UDim2.new(component.Frame.SliderBox.Size.X.Scale, component.Frame.SliderBox.Size.X.Offset, component.Frame.SliderBox.Size.Y.Scale, component.Frame.SliderBox.Size.Y.Offset + 10)
+			end
+		end)
+	end
 end
 
--- Listener Keybind
+for _, component in pairs(Tabs.Combat.Elements) do
+	if component.ClassName == "Slider" and component.Frame then
+		pcall(function()
+			component.Frame.Size = UDim2.new(component.Frame.Size.X.Scale, component.Frame.Size.X.Offset, component.Frame.Size.Y.Scale, component.Frame.Size.Y.Offset + 12)
+		end)
+	end
+end
+
+local function getClosestPlayerInFOV()
+	local closestPlayer = nil
+	local shortestDistance = FovCircle.Radius
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+			local pos, onScreen = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+			if onScreen then
+				local originPos
+				if Options.MoveFov.Value then
+					local mousePos = player:GetMouse()
+					originPos = Vector2.new(mousePos.X, mousePos.Y)
+				else
+					originPos = camera.ViewportSize / 2
+				end
+				local distance = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
+				if distance < shortestDistance then
+					closestPlayer = p
+					shortestDistance = distance
+				end
+			end
+		end
+	end
+	return closestPlayer
+end
+
 CamlockKeybind:OnClick(function()
-    CamlockToggle:SetValue(not Options.CamlockOn.Value)
+	CamlockToggle:SetValue(not Options.CamlockOn.Value)
 end)
 
--- Lógica de activación persistente
 CamlockToggle:OnChanged(function(val)
-    if val then
-        local target = getClosestPlayerInFOV()
-        if target then
-            camlockTargetName = target.Name
-        else
-            camlockTargetName = nil
-            CamlockToggle:SetValue(false)
-        end
-    else
-        camlockTargetName = nil
-    end
+	if val then
+		local target = getClosestPlayerInFOV()
+		if target then
+			camlockTargetName = target.Name
+		else
+			camlockTargetName = nil
+			CamlockToggle:SetValue(false)
+		end
+	else
+		camlockTargetName = nil
+	end
 end)
 
--- Posicionamiento y renderizado del FOV (Centro u opcionalmente Mouse)
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.Z then
+		SpeedToggle:SetValue(not Options.CFrameSpeedOn.Value)
+	elseif input.KeyCode == Enum.KeyCode.F then
+		FlyToggle:SetValue(not Options.CFlyOn.Value)
+	end
+end)
+
+SpeedToggle:OnChanged(function(val) SpeedOn = val end)
+FlyToggle:OnChanged(function(val) FlyOn = val end)
+HbeToggle:OnChanged(function(val) getgenv().HBE = val end)
+HbeSizeSlider:OnChanged(function(val) HITBOX_SIZE = Vector3.new(val, val, val) end)
+
 RunService.RenderStepped:Connect(function()
-    if Options.MoveFov.Value then
-        local mousePos = player:GetMouse()
-        FovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-    else
-        FovCircle.Position = camera.ViewportSize / 2
-    end
-    
-    FovCircle.Visible = Options.FovVisible.Value
-    FovCircle.Radius = Options.FovRadius.Value
-    FovCircle.Color = Options.FovColor.Value
+	if Options.MoveFov.Value then
+		local mousePos = player:GetMouse()
+		FovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+	else
+		FovCircle.Position = camera.ViewportSize / 2
+	end
+	FovCircle.Visible = Options.FovVisible.Value
+	FovCircle.Radius = Options.FovRadius.Value
+	FovCircle.Color = Options.FovColor.Value
 end)
 
--- Loop de apuntado del Camlock (Es persistente y no tiene auto-switch)
 RunService.RenderStepped:Connect(function()
-    if Options.CamlockOn.Value and camlockTargetName then
-        local targetPlayer = Players:FindFirstChild(camlockTargetName)
-        if targetPlayer and targetPlayer.Character then
-            local bone = targetPlayer.Character:FindFirstChild(Options.CamlockBone.Value)
-            if bone and bone:IsA("BasePart") then
-                local targetPosition = bone.Position
-                if Options.CamlockPredOn.Value then
-                    targetPosition = targetPosition + (bone.Velocity * Options.CamlockPred.Value)
-                end
-                
-                local newCFrame = CFrame.new(camera.CFrame.Position, targetPosition)
-                if Options.CamlockSmooth.Value then
-                    camera.CFrame = camera.CFrame:Lerp(newCFrame, Options.CamlockLerp.Value)
-                else
-                    camera.CFrame = newCFrame
-                end
-            end
-        end
-    end
+	if Options.CamlockOn.Value and camlockTargetName then
+		local targetPlayer = Players:FindFirstChild(camlockTargetName)
+		if targetPlayer and targetPlayer.Character then
+			local bone = targetPlayer.Character:FindFirstChild(Options.CamlockBone.Value)
+			if bone and bone:IsA("BasePart") then
+				local targetPosition = bone.Position
+				if Options.CamlockPredOn.Value then
+					targetPosition = targetPosition + (bone.Velocity * Options.CamlockPred.Value)
+				end
+				local newCFrame = CFrame.new(camera.CFrame.Position, targetPosition)
+				if Options.CamlockSmooth.Value then
+					camera.CFrame = camera.CFrame:Lerp(newCFrame, Options.CamlockLerp.Value)
+				else
+					camera.CFrame = newCFrame
+				end
+			end
+		end
+	end
 end)
 
--- ============================================================================
--- INTERFAZ SECCIÓN: HBE (Debajo del Camlock)
--- ============================================================================
-Tabs.Combat:CreateParagraph("HbeSection", { Title = "🧱 Hitbox Expander (HBE)", Content = "Agranda el tamaño de las hitboxes enemigas desde el entorno del cliente." })
+RunService.Heartbeat:Connect(function(deltaTime)
+	if not player.Character then return end
+	local root = player.Character:FindFirstChild("HumanoidRootPart")
+	local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then return end
 
-local HbeToggle = Tabs.Combat:CreateToggle("HbeOn", { Title = "Enable HBE", Default = false })
-local HbeSizeSlider = Tabs.Combat:CreateSlider("HbeSize", { Title = "Hitbox Size X/Y/Z", Default = 15, Min = 2, Max = 50, Rounding = 1 })
+	if FlyOn then
+		humanoid.PlatformStand = true
+		local flyDirection = Vector3.new(0, 0, 0)
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then flyDirection = flyDirection + camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then flyDirection = flyDirection - camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then flyDirection = flyDirection - camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then flyDirection = flyDirection + camera.CFrame.RightVector end
+		if flyDirection.Magnitude > 0 then
+			root.CFrame = root.CFrame + (flyDirection.Unit * Options.CFlySpeedVal.Value * deltaTime)
+		end
+		root.Velocity = Vector3.new(0, 0, 0)
+	else
+		if humanoid.PlatformStand then
+			humanoid.PlatformStand = false
+		end
+	end
 
-HbeToggle:OnChanged(function(val)
-    getgenv().HBE = val
-end)
-
-HbeSizeSlider:OnChanged(function(val)
-    HITBOX_SIZE = Vector3.new(val, val, val)
+	if SpeedOn and not FlyOn then
+		if humanoid.MoveDirection.Magnitude > 0 then
+			root.CFrame = root.CFrame + (humanoid.MoveDirection * Options.CFrameSpeedVal.Value * deltaTime)
+		end
+	end
 end)
 
 task.spawn(function()
-    local CHAR_PARENT = GetCharParent()
-    while true do
-        task.wait(0.1)
-        if getgenv().HBE and CHAR_PARENT then
-            for _, playerEnemy in ipairs(Players:GetPlayers()) do
-                if playerEnemy ~= player then
-                    local char = CHAR_PARENT:FindFirstChild(playerEnemy.Name)
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        local hrp = char.HumanoidRootPart
-                        hrp.Size = HITBOX_SIZE
-                        hrp.Transparency = 0.7
-                        hrp.Color = Color3.fromRGB(160, 32, 240) 
-                        hrp.Material = Enum.Material.Neon
-                        hrp.CanCollide = false
-                    end
-                end
-            end
-        else
-            for _, playerEnemy in ipairs(Players:GetPlayers()) do
-                if playerEnemy ~= player then
-                    local char = CHAR_PARENT and CHAR_PARENT:FindFirstChild(playerEnemy.Name)
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        local hrp = char.HumanoidRootPart
-                        hrp.Size = Vector3.new(2, 2, 1)
-                        hrp.Transparency = 1
-                        hrp.CanCollide = true
-                    end
-                end
-            end
-        end
-        if Library.Unloaded then break end
-    end
+	local CHAR_PARENT = GetCharParent()
+	while true do
+		task.wait(0.1)
+		if getgenv().HBE and CHAR_PARENT then
+			for _, playerEnemy in ipairs(Players:GetPlayers()) do
+				if playerEnemy ~= player then
+					local char = CHAR_PARENT:FindFirstChild(playerEnemy.Name)
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						local hrp = char.HumanoidRootPart
+						hrp.Size = HITBOX_SIZE
+						hrp.Transparency = 0.7
+						hrp.Color = Color3.fromRGB(160, 32, 240) 
+						hrp.Material = Enum.Material.Neon
+						hrp.CanCollide = false
+					end
+				end
+			end
+		else
+			for _, playerEnemy in ipairs(Players:GetPlayers()) do
+				if playerEnemy ~= player then
+					local char = CHAR_PARENT and CHAR_PARENT:FindFirstChild(playerEnemy.Name)
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						local hrp = char.HumanoidRootPart
+						hrp.Size = Vector3.new(2, 2, 1)
+						hrp.Transparency = 1
+						hrp.CanCollide = true
+					end
+				end
+			end
+		end
+		if Library.Unloaded then break end
+	end
 end)
 
--- ============================================================================
--- SETTINGS & CONFIGS
--- ============================================================================
 SaveManager:SetLibrary(Library)
 InterfaceManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes{}
-
 InterfaceManager:SetFolder("FluentScriptHub")
 SaveManager:SetFolder("FluentScriptHub/specific-game")
-
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 
 Window:SelectTab(1)
 
 Library:Notify{
-    Title = "Amethyst Framework",
-    Content = "Script listo con títulos y persistencia configurada.",
-    Duration = 5
+	Title = "Amethyst Framework",
+	Content = "Production suite initialization complete.",
+	Duration = 5
 }
 
 SaveManager:LoadAutoloadConfig()
